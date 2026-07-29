@@ -442,3 +442,76 @@ input[type=range]::-moz-range-thumb{
 .settings-actions{ display:flex; gap:10px; flex-wrap:wrap; }
 .settings-actions button{ flex:1; }
 .danger-zone{ border-color:var(--coral-dim); }
+/* =========================================================
+   Media Card Expandable
+   ========================================================= */
+.card-expandable {
+  cursor: pointer; /* Mostra que o card inteiro é clicável */
+  transition: background 0.2s ease;
+}
+
+.card-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+/* Botão de editar embutido no card */
+.btn-edit-media {
+  width: 32px; 
+  height: 32px;
+  margin-top: -4px;
+  margin-right: -4px;
+  color: var(--text-dim);
+}
+.btn-edit-media:active {
+  color: var(--gold);
+}
+.btn-edit-media svg {
+  width: 18px; 
+  height: 18px;
+}
+
+/* Área de Detalhes Expandida */
+.card-details {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeIn 0.2s ease;
+}
+
+.detail-row {
+  font-size: 0.85rem;
+}
+
+.detail-label {
+  color: var(--text-dim);
+}
+
+.detail-value {
+  color: var(--text);
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.review-box {
+  margin-top: 4px;
+}
+
+.review-box .detail-label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.review-text {
+  color: var(--text);
+  line-height: 1.5;
+  background: var(--bg-elevated-3);
+  padding: 12px;
+  border-radius: 8px;
+  font-style: italic;
+}

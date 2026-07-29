@@ -18,6 +18,17 @@ const Media = (() => {
     return (price || 0) / hours;
   }
 
+  // --- Escala de crítico de cinema ---
+  function getCriticLabel(rating) {
+    if (!rating || rating === 0) return 'Sem nota';
+    if (rating <= 2.0) return 'Péssimo';
+    if (rating <= 4.5) return 'Fraco';
+    if (rating <= 6.5) return 'Regular';
+    if (rating <= 8.5) return 'Muito Bom';
+    if (rating < 10) return 'Excelente';
+    return 'Obra-Prima';
+  }
+
   // =========================================================
   // List
   // =========================================================
@@ -39,29 +50,65 @@ const Media = (() => {
   }
 
   function cardHTML(m) {
+    const criticText = getCriticLabel(m.rating);
     const ratingBadge = m.rating > 0
-      ? `<span class="badge badge-gold">★ ${Number(m.rating).toFixed(1).replace(/\.0$/, '')}</span>`
-      : '';
+      ? `<span class="badge badge-gold">★ ${Number(m.rating).toFixed(1).replace(/\.0$/, '')} — ${criticText}</span>`
+      : `<span class="badge badge-neutral">Sem nota</span>`;
+      
     const vph = valuePerHour(m.price, m.hours);
     let valueBadge = '';
     if (vph !== null) {
       const cls = vph <= 3 ? 'badge-teal' : (vph <= 8 ? 'badge-neutral' : 'badge-coral');
       valueBadge = `<span class="badge ${cls}">${formatBRL(vph)}/h</span>`;
     }
-    const meta = [TYPE_LABEL[m.type], STATUS_LABEL[m.status]];
+    
+    // Meta dados rápidos (sem o status, que vai para os detalhes)
+    const meta = [TYPE_LABEL[m.type]];
     if (m.hours > 0) meta.push(`${m.hours}h`);
     if (m.price > 0) meta.push(formatBRL(m.price));
 
+    // Formata a data direto do formato YYYY-MM-DD do input date
+    const dateFormatted = m.dateFinished ? m.dateFinished.split('-').reverse().join('/') : '';
+
     return `
-      <div class="card" data-id="${m.id}">
-        <div class="card-top">
-          <div>
-            <div class="card-title">${TYPE_EMOJI[m.type]} ${escapeHtml(m.title)}</div>
-            <div class="card-sub">${meta.join(' · ')}</div>
+      <div class="card card-expandable" data-id="${m.id}">
+        <!-- Topo: Título, Ícone de Editar, Meta rápida -->
+        <div class="card-header">
+          <div class="card-top">
+            <div style="flex: 1; min-width: 0;">
+              <div class="card-title">${TYPE_EMOJI[m.type]} ${escapeHtml(m.title)}</div>
+              <div class="card-sub">${meta.join(' · ')}</div>
+            </div>
+            <button class="icon-btn btn-edit-media" data-action="edit" aria-label="Editar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </button>
           </div>
-          ${ratingBadge}
+          <div class="card-badges">
+            ${ratingBadge}
+            ${valueBadge}
+          </div>
         </div>
-        ${valueBadge ? `<div>${valueBadge}</div>` : ''}
+
+        <!-- Conteúdo expandido (Escondido por padrão) -->
+        <div class="card-details" hidden>
+          <div class="detail-row">
+            <span class="detail-label">Status:</span>
+            <span class="detail-value">${STATUS_LABEL[m.status]}</span>
+          </div>
+          ${dateFormatted ? `
+          <div class="detail-row">
+            <span class="detail-label">Concluído em:</span>
+            <span class="detail-value">${dateFormatted}</span>
+          </div>` : ''}
+          ${m.review ? `
+          <div class="detail-row review-box">
+            <span class="detail-label">Análise / Anotações:</span>
+            <p class="review-text">${escapeHtml(m.review).replace(/\n/g, '<br>')}</p>
+          </div>` : ''}
+        </div>
       </div>`;
   }
 
@@ -82,24 +129,43 @@ const Media = (() => {
   }
 
   function wireList() {
-    document.getElementById('type-filter').addEventListener('click', (e) => {
+    document.getElementById('type-filter').onclick = (e) => {
       const btn = e.target.closest('.chip');
       if (!btn) return;
       document.querySelectorAll('#type-filter .chip').forEach(c => c.classList.remove('is-active'));
       btn.classList.add('is-active');
       currentFilter = btn.dataset.type;
       renderList();
-    });
-    document.getElementById('sort-select').addEventListener('change', (e) => {
+    };
+    
+    document.getElementById('sort-select').onchange = (e) => {
       currentSort = e.target.value;
       renderList();
-    });
-    document.getElementById('media-list').addEventListener('click', (e) => {
+    };
+    
+    document.getElementById('media-list').onclick = (e) => {
       const card = e.target.closest('.card');
       if (!card) return;
-      openForm(card.dataset.id);
-    });
-    document.getElementById('btn-new-media').addEventListener('click', () => openForm(null));
+
+      // 1. Se clicou no botão de editar (ícone do lápis)
+      if (e.target.closest('[data-action="edit"]')) {
+        openForm(card.dataset.id);
+        return; // Interrompe para não expandir o card
+      }
+
+      // 2. Se clicou no resto do card, expande/contrai os detalhes
+      const details = card.querySelector('.card-details');
+      if (details) {
+        // (Opcional) Fecha os outros cards abertos para manter a tela limpa
+        document.querySelectorAll('.card-details').forEach(d => {
+           if (d !== details) d.hidden = true;
+        });
+        
+        details.hidden = !details.hidden;
+      }
+    };
+    
+    document.getElementById('btn-new-media').onclick = () => openForm(null);
   }
 
   // =========================================================
@@ -168,18 +234,18 @@ const Media = (() => {
   }
 
   function wireForm() {
-    document.getElementById('media-type-segmented').addEventListener('click', (e) => {
+    document.getElementById('media-type-segmented').onclick = (e) => {
       const btn = e.target.closest('.seg-btn');
       if (!btn) return;
       formType = btn.dataset.type;
       setSegmented(formType);
-    });
-    document.getElementById('media-rating').addEventListener('input', updateRatingLabel);
-    document.getElementById('media-price').addEventListener('input', updateValueBox);
-    document.getElementById('media-hours').addEventListener('input', updateValueBox);
-    document.getElementById('btn-cancel-media').addEventListener('click', () => App.back());
+    };
+    document.getElementById('media-rating').oninput = updateRatingLabel;
+    document.getElementById('media-price').oninput = updateValueBox;
+    document.getElementById('media-hours').oninput = updateValueBox;
+    document.getElementById('btn-cancel-media').onclick = () => App.back();
 
-    document.getElementById('form-media').addEventListener('submit', async (e) => {
+    document.getElementById('form-media').onsubmit = async (e) => {
       e.preventDefault();
       const title = document.getElementById('media-title').value.trim();
       if (!title) { toast('Dá um título'); return; }
@@ -201,16 +267,16 @@ const Media = (() => {
       toast(editingId ? 'Atualizado' : 'Adicionado');
       await renderList();
       App.back();
-    });
+    };
 
-    document.getElementById('btn-delete-media').addEventListener('click', async () => {
+    document.getElementById('btn-delete-media').onclick = async () => {
       if (!editingId) return;
       if (!confirm('Excluir este item do backlog?')) return;
       await DB.delete('media', editingId);
       toast('Excluído');
       await renderList();
       App.back();
-    });
+    };
   }
 
   // =========================================================
