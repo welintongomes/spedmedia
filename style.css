@@ -127,7 +127,10 @@ main{
 .screen{ display:none; padding:16px; animation:fadeIn .18s ease; }
 .screen.is-active{ display:block; }
 .screen[data-fullflex].is-active{ display:flex; flex-direction:column; min-height:calc(100dvh - var(--topbar-h) - var(--bottomnav-h)); }
-@keyframes fadeIn{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:none; } }
+@keyframes fadeIn { 
+  from { opacity: 0; } 
+  to { opacity: 1; } 
+}
 
 .bottomnav{
   position:sticky; bottom:0; z-index:20;
@@ -233,7 +236,7 @@ main{
 .btn-primary{ background:var(--gold); color:#1b1305; }
 .btn-primary:active{ filter:brightness(0.94); }
 .btn-secondary{ background:var(--bg-elevated-3); color:var(--text); }
-.btn-danger{ background:var(--coral); color:#2a0c0e; }
+.btn-danger{ background:var(--coral); color:#2a0c0e; width: 100%; }
 .btn-ghost{ background:transparent; color:var(--text-dim); border:1px solid var(--border); }
 .btn-ghost:disabled{ opacity:0.4; }
 .btn-small{ padding:9px 14px; font-size:0.82rem; }
