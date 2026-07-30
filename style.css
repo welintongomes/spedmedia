@@ -376,7 +376,7 @@ input[type=range]::-moz-range-thumb{
 
 .splits-list{
   flex:1;
-  min-height:120px;
+  min-height:270px;
   overflow-y:auto;
   display:flex; flex-direction:column;
   border-top:1px solid var(--border-soft);
@@ -596,4 +596,55 @@ input[type=range]::-moz-range-thumb{
   font-family: var(--font-mono);
   font-weight: 600;
   margin-left: 10px;
+}
+
+/* =========================================================
+   Scroll Automático e Modal Lado a Lado
+   ========================================================= */
+
+/* Limita a altura da lista de áreas para focar apenas nas próximas */
+.splits-list {
+  flex: 0 0 160px; /* Altura fixa de ~3 a 4 áreas */
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border-soft);
+  scroll-behavior: smooth; /* Deixa o scroll suave */
+}
+
+/* Modal de fim de corrida: Lado a Lado */
+.summary-times-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 360px;
+  margin-bottom: 12px;
+}
+
+.summary-time-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-m);
+  padding: 14px 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.summary-time-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.summary-time-value {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.summary-time-value.is-gold {
+  color: var(--gold);
 }

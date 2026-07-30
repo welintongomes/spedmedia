@@ -162,7 +162,12 @@ const Speedrun = (() => {
     Timer.rafId = null;
   }
 
-  function openTimer(gameId) {
+  // =========================================================
+  // Live timer screen (Com Navegação Corrigida)
+  // =========================================================
+
+  // Nova função que apenas limpa a interface do cronômetro
+  function refreshTimerView(gameId) {
     const g = games.find(x => x.id === gameId);
     const pb = pbFor(gameId);
     resetTimerState(g, pb);
@@ -192,14 +197,38 @@ const Speedrun = (() => {
     mainBtn.className = 'btn-timer-main';
     document.getElementById('btn-undo-split').disabled = true;
     document.getElementById('btn-reset-run').disabled = true;
+    
+    // Garante que o botão pular recomeça desligado
+    const skipBtn = document.getElementById('btn-skip-split');
+    if(skipBtn) skipBtn.disabled = true;
 
     renderSplitRows();
+  }
 
+  function openTimer(gameId) {
+    // 1. Limpa o cronômetro
+    refreshTimerView(gameId);
+    
+    // 2. Avisa a navegação (só acontece quando abre a tela a primeira vez!)
+    const g = games.find(x => x.id === gameId);
     App.go('screen-speedrun-timer', g.name);
+    
     const ctxBtn = document.getElementById('btn-context');
     ctxBtn.hidden = false;
     ctxBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><path d="M8.5 14L6 22l6-3 6 3-2.5-8"/></svg>`;
     ctxBtn.onclick = () => openHistory(gameId);
+  }
+
+  function closeSummary() {
+    document.getElementById('run-summary').hidden = true;
+    // Agora apenas recarrega o visual, sem acumular telas!
+    refreshTimerView(Timer.game.id); 
+  }
+
+  function resetRun() {
+    if (Timer.running && Timer.splitTimes.length && !confirm('Resetar essa tentativa? O progresso atual será perdido.')) return;
+    // Agora apenas recarrega o visual, sem acumular telas!
+    refreshTimerView(Timer.game.id); 
   }
 
   function renderSplitRows() {
@@ -225,11 +254,18 @@ const Speedrun = (() => {
     highlightCurrentRow();
   }
 
+// --- SUBSTITUA A highlightCurrentRow POR ESTA ---
   function highlightCurrentRow() {
     const idx = Timer.splitTimes.length;
     Timer.rowEls.forEach((row, i) => {
-      row.classList.toggle('is-current', i === idx && Timer.running && !Timer.finished);
-      row.querySelector('.split-name').classList.toggle('is-current', i === idx && Timer.running && !Timer.finished);
+      const isCurrent = (i === idx && Timer.running && !Timer.finished);
+      row.classList.toggle('is-current', isCurrent);
+      row.querySelector('.split-name').classList.toggle('is-current', isCurrent);
+      
+      // Auto-scroll mágico: empurra a linha atual para o meio da lista
+      if (isCurrent) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     });
   }
 
@@ -360,7 +396,7 @@ const Speedrun = (() => {
   }
 
   // --- SUBSTITUA O SEU finishRun POR ESTE ---
-  async function finishRun(totalTime) {
+async function finishRun(totalTime) {
     Timer.finished = true;
     Timer.running = false;
     if (Timer.rafId) cancelAnimationFrame(Timer.rafId);
@@ -368,7 +404,12 @@ const Speedrun = (() => {
     document.getElementById('live-delta').textContent = '';
     document.getElementById('clock-box').className = 'clock-box';
 
-    const isNewPB = !Timer.pbRun || totalTime < Timer.pbRun.totalTime;
+    // Pega o PB ANTERIOR antes de salvar a corrida nova
+    const previousRuns = runsByGame[Timer.game.id] || [];
+    const prevPb = previousRuns.length ? previousRuns.reduce((min, r) => r.totalTime < min.totalTime ? r : min) : null;
+    
+    const isNewPB = !prevPb || totalTime < prevPb.totalTime;
+    
     const run = {
       id: uuid(),
       gameId: Timer.game.id,
@@ -376,6 +417,7 @@ const Speedrun = (() => {
       segmentTimes: [...Timer.splitTimes],
       totalTime,
     };
+    
     await DB.put('runs', run);
     (runsByGame[Timer.game.id] ||= []).push(run);
     if (isNewPB) Timer.pbRun = run;
@@ -383,9 +425,10 @@ const Speedrun = (() => {
     document.getElementById('btn-timer-main').className = 'btn-timer-main';
     document.getElementById('btn-timer-main').textContent = 'Iniciar';
     document.getElementById('btn-undo-split').disabled = true;
-    document.getElementById('btn-skip-split').disabled = true;
+    const skipBtn = document.getElementById('btn-skip-split');
+    if(skipBtn) skipBtn.disabled = true;
 
-    // Geração do relatório detalhado
+    // Relatório detalhado (mantido o código anterior)
     const detailsWrap = document.getElementById('run-summary-details');
     detailsWrap.innerHTML = Timer.game.segments.map((name, i) => {
       const segTime = run.segmentTimes[i];
@@ -393,7 +436,6 @@ const Speedrun = (() => {
       let colorClass = '';
 
       if (segTime !== null && segTime !== undefined) {
-        // Encontra o tempo do segmento anterior válido para calcular a duração
         let prevTime = 0;
         for (let j = i - 1; j >= 0; j--) {
           if (run.segmentTimes[j] !== null && run.segmentTimes[j] !== undefined) {
@@ -403,8 +445,6 @@ const Speedrun = (() => {
         }
         const duration = segTime - prevTime;
         timeText = formatClock(duration);
-        
-        // Colore de dourado se foi Gold Split
         if (Timer.bestSegments[i] !== null && duration <= Timer.bestSegments[i]) {
            colorClass = 'is-gold';
         }
@@ -420,42 +460,45 @@ const Speedrun = (() => {
       `;
     }).join('');
 
+    // Preenchendo as novas caixas lado a lado
     const flag = document.getElementById('run-summary-flag');
     const sub = document.getElementById('run-summary-sub');
-    flag.textContent = isNewPB ? '🏆 Novo recorde!' : 'Corrida salva';
-    document.getElementById('run-summary-time').textContent = formatClock(totalTime);
+    const elTime = document.getElementById('run-summary-time');
+    const elPb = document.getElementById('run-summary-pb');
+
+    flag.textContent = isNewPB ? '🏆 Novo recorde!' : 'Corrida concluída';
+    elTime.textContent = formatClock(totalTime);
+    elPb.textContent = prevPb ? formatClock(prevPb.totalTime) : '—';
     
-    if (!isNewPB) {
-      const prevPb = runsByGame[Timer.game.id].reduce((min, r) => r.totalTime < min.totalTime ? r : min);
-      const diff = totalTime - prevPb.totalTime;
-      sub.textContent = `${formatDelta(diff)} em relação ao recorde (${formatClock(prevPb.totalTime)})`;
+    // Deixa o tempo dourado se for novo recorde
+    if (isNewPB) {
+      elTime.classList.add('is-gold');
+      sub.textContent = 'Essa é a nova marca a bater da próxima vez!';
     } else {
-      sub.textContent = 'Essa é a nova marca a bater da próxima vez.';
+      elTime.classList.remove('is-gold');
+      const diff = totalTime - prevPb.totalTime;
+      sub.textContent = `Ficou ${formatDelta(diff)} atrás do seu recorde.`;
     }
     
     document.getElementById('run-summary').hidden = false;
   }
 
-  function closeSummary() {
-    document.getElementById('run-summary').hidden = true;
-    openTimer(Timer.game.id); // Recarrega a interface do timer fresca
-  }
-
-  function resetRun() {
-    if (Timer.running && Timer.splitTimes.length && !confirm('Resetar essa tentativa? O progresso atual será perdido.')) return;
-    openTimer(Timer.game.id);
-  }
-
   // =========================================================
   // History screen (Com Exclusão)
   // =========================================================
-  function openHistory(gameId) {
+  // =========================================================
+  // History screen (Com Exclusão Corrigida)
+  // =========================================================
+  
+  // Nova função que APENAS atualiza o visual da lista no HTML
+  function renderHistoryList(gameId) {
     const g = games.find(x => x.id === gameId);
     const runs = [...(runsByGame[gameId] || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
     const pb = pbFor(gameId);
 
     const wrap = document.getElementById('history-list');
     const empty = document.getElementById('history-empty');
+    
     if (!runs.length) {
       wrap.innerHTML = '';
       empty.hidden = false;
@@ -477,7 +520,35 @@ const Speedrun = (() => {
           </div>
         </div>`).join('');
     }
-    App.go('screen-speedrun-history', `Histórico — ${g.name}`);
+  }
+
+  function openHistory(gameId) {
+    const g = games.find(x => x.id === gameId);
+    renderHistoryList(gameId); // Chama a função para montar a lista
+    App.go('screen-speedrun-history', `Histórico — ${g.name}`); // Abre a tela
+  }
+
+  function wireHistory() {
+    document.getElementById('history-list').onclick = async (e) => {
+      const btn = e.target.closest('.btn-delete-run');
+      if (!btn) return;
+      if (!confirm('Excluir esta corrida do histórico? Se ela for seu recorde, o app recalculará o novo recorde automaticamente.')) return;
+      
+      const runId = btn.dataset.runId;
+      const gameId = btn.dataset.gameId;
+      
+      // Apaga do banco de dados e da memória
+      await DB.delete('runs', runId);
+      runsByGame[gameId] = runsByGame[gameId].filter(r => r.id !== runId);
+      toast('Corrida apagada');
+      
+      // Atualiza a tela de histórico que você está vendo agora
+      renderHistoryList(gameId); 
+      
+      // MÁGICA AQUI: Atualiza a tela inicial lá atrás, invisível, 
+      // para arrumar a badge dourada antes mesmo de você clicar em Voltar!
+      await renderHome(); 
+    };
   }
 
   // =========================================================
@@ -574,21 +645,6 @@ const Speedrun = (() => {
     document.getElementById('btn-summary-close').onclick = closeSummary;
   }
 
-  function wireHistory() {
-    document.getElementById('history-list').onclick = async (e) => {
-      const btn = e.target.closest('.btn-delete-run');
-      if (!btn) return;
-      if (!confirm('Excluir esta corrida do histórico? Se ela for seu recorde, o app recalculará o novo recorde automaticamente.')) return;
-      
-      const runId = btn.dataset.runId;
-      const gameId = btn.dataset.gameId;
-      
-      await DB.delete('runs', runId);
-      runsByGame[gameId] = runsByGame[gameId].filter(r => r.id !== runId);
-      toast('Corrida apagada');
-      openHistory(gameId); // Atualiza a tela na hora
-    };
-  }
 
   // =========================================================
   // Public
