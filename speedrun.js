@@ -1,23 +1,24 @@
 /* =========================================================
-   speedrun.js — categories, live timer, ghost comparison, history
+   speedrun.js — LiveSplit Features: Gold Splits, SoB, History
    ========================================================= */
 const Speedrun = (() => {
 
   let games = [];       // cache of all games
   let runsByGame = {};  // gameId -> [runs]
   let editingGameId = null;
-  let formSegments = []; // array of strings while editing the category form
+  let formSegments = []; 
 
   // ---- Live timer state ----
   const Timer = {
     game: null,
     pbRun: null,
+    bestSegments: [],   // Array com o Gold Split de cada área
     running: false,
     finished: false,
     startTs: 0,
     pausedAccum: 0,
-    splitTimes: [],     // cumulative ms, one per completed segment
-    segDeltas: [],      // frozen segment delta (ms) per completed segment
+    splitTimes: [],     // cumulative ms
+    segDeltas: [],      // frozen segment delta (ms)
     rafId: null,
     rowEls: [],
     rowDeltaEls: [],
@@ -30,7 +31,7 @@ const Speedrun = (() => {
   }
 
   // =========================================================
-  // Data loading
+  // Data loading & LiveSplit Math
   // =========================================================
   async function loadAll() {
     games = await DB.getAll('games');
@@ -45,6 +46,27 @@ const Speedrun = (() => {
     const runs = runsByGame[gameId] || [];
     if (!runs.length) return null;
     return runs.reduce((min, r) => (r.totalTime < min.totalTime ? r : min));
+  }
+
+  // Calcula o melhor tempo da história de CADA segmento (Gold Splits)
+  function getBestSegments(gameId) {
+    const runs = runsByGame[gameId] || [];
+    const game = games.find(g => g.id === gameId);
+    if (!game || !runs.length) return [];
+    
+    const bests = new Array(game.segments.length).fill(Infinity);
+    
+    runs.forEach(run => {
+      // Ignora runs incompletas (útil quando implementarmos Skip)
+      if (run.segmentTimes.length === game.segments.length) {
+        run.segmentTimes.forEach((time, i) => {
+          const prev = i > 0 ? run.segmentTimes[i - 1] : 0;
+          const dur = time - prev;
+          if (dur < bests[i]) bests[i] = dur;
+        });
+      }
+    });
+    return bests.map(b => b === Infinity ? null : b);
   }
 
   // =========================================================
@@ -86,19 +108,6 @@ const Speedrun = (() => {
     }).join('');
   }
 
-  function wireHomeList() {
-    document.getElementById('speedrun-game-list').addEventListener('click', (e) => {
-      const card = e.target.closest('.card');
-      if (!card) return;
-      const gameId = card.dataset.gameId;
-      const action = e.target.closest('[data-action]')?.dataset.action;
-      if (action === 'edit') openGameForm(gameId);
-      else if (action === 'history') openHistory(gameId);
-      else openTimer(gameId); // tapping the card body, or the "Iniciar" button
-    });
-    document.getElementById('btn-new-game').addEventListener('click', () => openGameForm(null));
-  }
-
   // =========================================================
   // Category (game) form
   // =========================================================
@@ -136,71 +145,13 @@ const Speedrun = (() => {
     renderSegmentRows();
   }
 
-  function wireGameForm() {
-    const segList = document.getElementById('segment-list');
-    segList.addEventListener('input', (e) => {
-      const input = e.target.closest('[data-seg-input]');
-      if (!input) return;
-      const idx = Number(input.closest('.segment-row').dataset.idx);
-      formSegments[idx] = input.value;
-    });
-    segList.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-seg-remove]');
-      if (!btn) return;
-      const idx = Number(btn.closest('.segment-row').dataset.idx);
-      if (formSegments.length <= 1) { toast('Precisa de pelo menos 1 área'); return; }
-      formSegments.splice(idx, 1);
-      renderSegmentRows();
-    });
-
-    document.getElementById('btn-add-segment').addEventListener('click', () => {
-      formSegments.push('');
-      renderSegmentRows();
-      const inputs = segList.querySelectorAll('[data-seg-input]');
-      inputs[inputs.length - 1]?.focus();
-    });
-
-    document.getElementById('btn-cancel-game').addEventListener('click', () => App.back());
-
-    document.getElementById('form-speedrun-game').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('game-name').value.trim();
-      const segments = formSegments.map(s => s.trim()).filter(Boolean);
-      if (!name) { toast('Dá um nome pra essa categoria'); return; }
-      if (!segments.length) { toast('Adiciona pelo menos 1 área'); return; }
-
-      if (editingGameId) {
-        const g = games.find(x => x.id === editingGameId);
-        g.name = name;
-        g.segments = segments;
-        await DB.put('games', g);
-        toast('Categoria atualizada');
-      } else {
-        const g = { id: uuid(), name, segments, createdAt: new Date().toISOString() };
-        await DB.put('games', g);
-        toast('Categoria criada');
-      }
-      await renderHome();
-      App.back();
-    });
-
-    document.getElementById('btn-delete-game').addEventListener('click', async () => {
-      if (!editingGameId) return;
-      if (!confirm('Excluir esta categoria e todo o histórico de corridas dela? Essa ação não pode ser desfeita.')) return;
-      await DB.delete('games', editingGameId);
-      await DB.deleteWhere('runs', 'gameId', editingGameId);
-      toast('Categoria excluída');
-      await renderHome();
-      App.replaceRoot('screen-speedrun-home');
-    });
-  }
-
   // =========================================================
   // Live timer screen
   // =========================================================
   function resetTimerState(game, pbRun) {
     Timer.game = game;
     Timer.pbRun = pbRun;
+    Timer.bestSegments = getBestSegments(game.id);
     Timer.running = false;
     Timer.finished = false;
     Timer.startTs = 0;
@@ -220,6 +171,17 @@ const Speedrun = (() => {
     document.getElementById('pb-line').innerHTML = pb
       ? `Recorde: <span class="pb-time">${formatClock(pb.totalTime)}</span>`
       : 'Sem recorde ainda — essa tentativa já entra pro histórico';
+      
+    // Sum of Best
+    const sobLine = document.getElementById('sob-line');
+    if (Timer.bestSegments.length > 0 && Timer.bestSegments.every(b => b !== null)) {
+      const sob = Timer.bestSegments.reduce((a, b) => a + b, 0);
+      document.getElementById('sob-time').textContent = formatClock(sob);
+      sobLine.hidden = false;
+    } else {
+      sobLine.hidden = true;
+    }
+
     document.getElementById('clock-display').textContent = '0:00.00';
     document.getElementById('live-delta').textContent = '';
     document.getElementById('live-delta').className = 'live-delta';
@@ -294,10 +256,6 @@ const Speedrun = (() => {
       liveDeltaEl.textContent = text;
       liveDeltaEl.className = 'live-delta ' + cls;
       clockBox.className = 'clock-box ' + cls;
-      if (Timer.rowDeltaEls[idx]) {
-        Timer.rowDeltaEls[idx].textContent = text;
-        Timer.rowDeltaEls[idx].className = 'split-delta ' + cls;
-      }
     } else {
       liveDeltaEl.textContent = '';
       liveDeltaEl.className = 'live-delta';
@@ -334,12 +292,21 @@ const Speedrun = (() => {
     const delta = pbDur !== null ? segDuration - pbDur : null;
     Timer.segDeltas.push(delta);
 
+    // Lógica do GOLD SPLIT
+    const bestDur = Timer.bestSegments[idx];
+    const isGold = bestDur !== null && segDuration < bestDur;
+
     if (Timer.rowEls[idx]) {
       const cell = Timer.rowDeltaEls[idx];
       if (delta !== null) {
-        const cls = delta < 0 ? 'is-ahead' : 'is-behind';
+        let cls = delta < 0 ? 'is-ahead' : 'is-behind';
+        if (isGold) cls = 'is-gold'; // Substitui verde por dourado
         cell.textContent = formatDelta(delta);
         cell.className = 'split-delta ' + cls;
+      } else if (isGold) {
+        // Primeira run da vida batendo um tempo base
+        cell.textContent = '-0.00';
+        cell.className = 'split-delta is-gold';
       }
     }
 
@@ -365,6 +332,34 @@ const Speedrun = (() => {
     highlightCurrentRow();
   }
 
+  // --- ADICIONE ESTA NOVA FUNÇÃO ---
+  function skipSplit() {
+    if (!Timer.running || Timer.finished) return;
+    
+    const idx = Timer.splitTimes.length;
+    // Salva null para indicar que a área foi pulada
+    Timer.splitTimes.push(null);
+    Timer.segDeltas.push(null);
+
+    if (Timer.rowEls[idx]) {
+      const cell = Timer.rowDeltaEls[idx];
+      cell.textContent = 'Pulou';
+      cell.className = 'split-delta';
+      // Risca o tempo na interface principal
+      Timer.rowEls[idx].style.opacity = '0.4';
+    }
+
+    document.getElementById('btn-undo-split').disabled = false;
+
+    // Se pulou a última área, encerra a corrida com o tempo atual
+    if (idx === Timer.game.segments.length - 1) {
+      finishRun(getElapsed());
+    } else {
+      highlightCurrentRow();
+    }
+  }
+
+  // --- SUBSTITUA O SEU finishRun POR ESTE ---
   async function finishRun(totalTime) {
     Timer.finished = true;
     Timer.running = false;
@@ -388,11 +383,48 @@ const Speedrun = (() => {
     document.getElementById('btn-timer-main').className = 'btn-timer-main';
     document.getElementById('btn-timer-main').textContent = 'Iniciar';
     document.getElementById('btn-undo-split').disabled = true;
+    document.getElementById('btn-skip-split').disabled = true;
+
+    // Geração do relatório detalhado
+    const detailsWrap = document.getElementById('run-summary-details');
+    detailsWrap.innerHTML = Timer.game.segments.map((name, i) => {
+      const segTime = run.segmentTimes[i];
+      let timeText = '—';
+      let colorClass = '';
+
+      if (segTime !== null && segTime !== undefined) {
+        // Encontra o tempo do segmento anterior válido para calcular a duração
+        let prevTime = 0;
+        for (let j = i - 1; j >= 0; j--) {
+          if (run.segmentTimes[j] !== null && run.segmentTimes[j] !== undefined) {
+            prevTime = run.segmentTimes[j];
+            break;
+          }
+        }
+        const duration = segTime - prevTime;
+        timeText = formatClock(duration);
+        
+        // Colore de dourado se foi Gold Split
+        if (Timer.bestSegments[i] !== null && duration <= Timer.bestSegments[i]) {
+           colorClass = 'is-gold';
+        }
+      } else {
+        timeText = 'Pulou';
+      }
+
+      return `
+        <div class="summary-row">
+          <span class="seg-name">${escapeHtml(name)}</span>
+          <span class="seg-time ${colorClass}">${timeText}</span>
+        </div>
+      `;
+    }).join('');
 
     const flag = document.getElementById('run-summary-flag');
     const sub = document.getElementById('run-summary-sub');
     flag.textContent = isNewPB ? '🏆 Novo recorde!' : 'Corrida salva';
     document.getElementById('run-summary-time').textContent = formatClock(totalTime);
+    
     if (!isNewPB) {
       const prevPb = runsByGame[Timer.game.id].reduce((min, r) => r.totalTime < min.totalTime ? r : min);
       const diff = totalTime - prevPb.totalTime;
@@ -400,47 +432,22 @@ const Speedrun = (() => {
     } else {
       sub.textContent = 'Essa é a nova marca a bater da próxima vez.';
     }
+    
     document.getElementById('run-summary').hidden = false;
   }
 
   function closeSummary() {
     document.getElementById('run-summary').hidden = true;
-    const pb = pbFor(Timer.game.id);
-    resetTimerState(Timer.game, pb);
-    document.getElementById('pb-line').innerHTML = pb
-      ? `Recorde: <span class="pb-time">${formatClock(pb.totalTime)}</span>`
-      : 'Sem recorde ainda — essa tentativa já entra pro histórico';
-    document.getElementById('clock-display').textContent = '0:00.00';
-    document.getElementById('btn-timer-main').textContent = 'Iniciar';
-    document.getElementById('btn-timer-main').className = 'btn-timer-main';
-    document.getElementById('btn-reset-run').disabled = true;
-    renderSplitRows();
+    openTimer(Timer.game.id); // Recarrega a interface do timer fresca
   }
 
   function resetRun() {
     if (Timer.running && Timer.splitTimes.length && !confirm('Resetar essa tentativa? O progresso atual será perdido.')) return;
-    const pb = pbFor(Timer.game.id);
-    resetTimerState(Timer.game, pb);
-    document.getElementById('clock-display').textContent = '0:00.00';
-    document.getElementById('live-delta').textContent = '';
-    document.getElementById('live-delta').className = 'live-delta';
-    document.getElementById('clock-box').className = 'clock-box';
-    document.getElementById('btn-timer-main').textContent = 'Iniciar';
-    document.getElementById('btn-timer-main').className = 'btn-timer-main';
-    document.getElementById('btn-undo-split').disabled = true;
-    document.getElementById('btn-reset-run').disabled = true;
-    renderSplitRows();
-  }
-
-  function wireTimer() {
-    document.getElementById('btn-timer-main').addEventListener('click', startOrSplit);
-    document.getElementById('btn-undo-split').addEventListener('click', undoLastSplit);
-    document.getElementById('btn-reset-run').addEventListener('click', resetRun);
-    document.getElementById('btn-summary-close').addEventListener('click', closeSummary);
+    openTimer(Timer.game.id);
   }
 
   // =========================================================
-  // History screen
+  // History screen (Com Exclusão)
   // =========================================================
   function openHistory(gameId) {
     const g = games.find(x => x.id === gameId);
@@ -461,11 +468,126 @@ const Speedrun = (() => {
               <div class="history-time">${formatClock(r.totalTime)}</div>
               <div class="history-date">${formatDateBR(r.date)}</div>
             </div>
-            ${pb && r.id === pb.id ? '<span class="badge badge-gold">recorde</span>' : ''}
+            <div style="display:flex; align-items:center; gap:8px;">
+              ${pb && r.id === pb.id ? '<span class="badge badge-gold">recorde</span>' : ''}
+              <button class="btn-delete-run" data-run-id="${r.id}" data-game-id="${g.id}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              </button>
+            </div>
           </div>
         </div>`).join('');
     }
     App.go('screen-speedrun-history', `Histórico — ${g.name}`);
+  }
+
+  // =========================================================
+  // Wire (Event Listeners corretos com .onclick)
+  // =========================================================
+  function wireHomeList() {
+    document.getElementById('speedrun-game-list').onclick = (e) => {
+      const card = e.target.closest('.card');
+      if (!card) return;
+      const gameId = card.dataset.gameId;
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      if (action === 'edit') openGameForm(gameId);
+      else if (action === 'history') openHistory(gameId);
+      else openTimer(gameId);
+    };
+    document.getElementById('btn-new-game').onclick = () => openGameForm(null);
+  }
+
+  function wireGameForm() {
+    const segList = document.getElementById('segment-list');
+    segList.oninput = (e) => {
+      const input = e.target.closest('[data-seg-input]');
+      if (!input) return;
+      const idx = Number(input.closest('.segment-row').dataset.idx);
+      formSegments[idx] = input.value;
+    };
+    segList.onclick = (e) => {
+      const btn = e.target.closest('[data-seg-remove]');
+      if (!btn) return;
+      const idx = Number(btn.closest('.segment-row').dataset.idx);
+      if (formSegments.length <= 1) { toast('Precisa de pelo menos 1 área'); return; }
+      formSegments.splice(idx, 1);
+      renderSegmentRows();
+    };
+
+    document.getElementById('btn-add-segment').onclick = () => {
+      formSegments.push('');
+      renderSegmentRows();
+      const inputs = segList.querySelectorAll('[data-seg-input]');
+      inputs[inputs.length - 1]?.focus();
+    };
+
+    document.getElementById('btn-cancel-game').onclick = () => App.back();
+
+    document.getElementById('form-speedrun-game').onsubmit = async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('game-name').value.trim();
+      const segments = formSegments.map(s => s.trim()).filter(Boolean);
+      if (!name) { toast('Dá um nome pra essa categoria'); return; }
+      if (!segments.length) { toast('Adiciona pelo menos 1 área'); return; }
+
+      if (editingGameId) {
+        const g = games.find(x => x.id === editingGameId);
+        g.name = name;
+        g.segments = segments;
+        await DB.put('games', g);
+        toast('Categoria atualizada');
+      } else {
+        const g = { id: uuid(), name, segments, createdAt: new Date().toISOString() };
+        await DB.put('games', g);
+        toast('Categoria criada');
+      }
+      await renderHome();
+      App.back();
+    };
+
+    document.getElementById('btn-delete-game').onclick = async () => {
+      if (!editingGameId) return;
+      if (!confirm('Excluir esta categoria e todo o histórico de corridas dela? Essa ação não pode ser desfeita.')) return;
+      await DB.delete('games', editingGameId);
+      await DB.deleteWhere('runs', 'gameId', editingGameId);
+      toast('Categoria excluída');
+      await renderHome();
+      App.replaceRoot('screen-speedrun-home');
+    };
+  }
+
+  // --- SUBSTITUA O SEU wireTimer POR ESTE ---
+  function wireTimer() {
+    document.getElementById('btn-timer-main').onclick = startOrSplit;
+    document.getElementById('btn-undo-split').onclick = undoLastSplit;
+    
+    // Liga o botão de Pular e habilita/desabilita no momento certo
+    const skipBtn = document.getElementById('btn-skip-split');
+    skipBtn.onclick = skipSplit;
+    
+    const originalStart = document.getElementById('btn-timer-main').onclick;
+    document.getElementById('btn-timer-main').onclick = () => {
+       originalStart();
+       skipBtn.disabled = !Timer.running;
+    };
+    
+    document.getElementById('btn-reset-run').onclick = resetRun;
+    document.getElementById('btn-summary-close').onclick = closeSummary;
+  }
+
+  function wireHistory() {
+    document.getElementById('history-list').onclick = async (e) => {
+      const btn = e.target.closest('.btn-delete-run');
+      if (!btn) return;
+      if (!confirm('Excluir esta corrida do histórico? Se ela for seu recorde, o app recalculará o novo recorde automaticamente.')) return;
+      
+      const runId = btn.dataset.runId;
+      const gameId = btn.dataset.gameId;
+      
+      await DB.delete('runs', runId);
+      runsByGame[gameId] = runsByGame[gameId].filter(r => r.id !== runId);
+      toast('Corrida apagada');
+      openHistory(gameId); // Atualiza a tela na hora
+    };
   }
 
   // =========================================================
@@ -475,6 +597,7 @@ const Speedrun = (() => {
     wireHomeList();
     wireGameForm();
     wireTimer();
+    wireHistory();
     await renderHome();
   }
 

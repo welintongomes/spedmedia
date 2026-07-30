@@ -518,3 +518,82 @@ input[type=range]::-moz-range-thumb{
   border-radius: 8px;
   font-style: italic;
 }
+/* =========================================================
+   LiveSplit Pro Features
+   ========================================================= */
+.sob-line {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  margin-top: -6px;
+}
+.sob-line span {
+  color: var(--teal);
+  font-weight: 600;
+}
+
+/* O brilho do Gold Split */
+.is-gold {
+  color: var(--gold) !important;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(242,184,75, 0.4);
+}
+
+/* Botão de excluir no histórico */
+.btn-delete-run {
+  background: none;
+  border: none;
+  color: var(--coral-dim);
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.btn-delete-run:active {
+  background: var(--bg-elevated-3);
+  color: var(--coral);
+}
+/* =========================================================
+   Post-Run Summary Table
+   ========================================================= */
+.run-summary-details {
+  width: 100%;
+  max-width: 360px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-m);
+  margin-bottom: 18px;
+  max-height: 40vh;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 0.85rem;
+}
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-row .seg-name {
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-row .seg-time {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  margin-left: 10px;
+}

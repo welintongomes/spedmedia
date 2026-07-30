@@ -11,6 +11,7 @@
 <!-- <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> -->
 <!-- <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet"> -->
+ <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡️</text></svg>">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -71,7 +72,7 @@
     <section class="screen" id="screen-speedrun-timer" data-nav="speedrun">
       <div class="timer-wrap">
         <div class="pb-line" id="pb-line">sem recorde ainda</div>
-
+        <div class="sob-line" id="sob-line" hidden>Sum of Best: <span id="sob-time">0:00.00</span></div>
         <div class="clock-box" id="clock-box">
           <div class="clock" id="clock-display">0:00.00</div>
           <div class="live-delta" id="live-delta"></div>
@@ -84,12 +85,15 @@
         <p class="run-summary-flag" id="run-summary-flag">Novo recorde!</p>
         <p class="run-summary-time" id="run-summary-time">0:00.00</p>
         <p class="run-summary-sub" id="run-summary-sub"></p>
+        <!-- Relatório detalhado entra aqui -->
+        <div class="run-summary-details" id="run-summary-details"></div>
         <button class="btn-primary" id="btn-summary-close">Fechar</button>
       </div>
 
       <div class="timer-controls">
-        <button class="btn-ghost btn-small" id="btn-undo-split" disabled>Desfazer split</button>
+        <button class="btn-ghost btn-small" id="btn-undo-split" disabled>Desfazer</button>
         <button class="btn-timer-main" id="btn-timer-main">Iniciar</button>
+        <button class="btn-ghost btn-small" id="btn-skip-split" disabled>Pular</button>
         <button class="btn-ghost btn-small" id="btn-reset-run" disabled>Resetar</button>
       </div>
     </section>
