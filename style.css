@@ -155,7 +155,7 @@ main{
 
 .fab{
   position:absolute;
-  right:20px;
+  left:20px;
   bottom:calc(var(--bottomnav-h) + 18px + env(safe-area-inset-bottom));
   width:56px; height:56px;
   border-radius:50%;
