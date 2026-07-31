@@ -148,12 +148,15 @@ const Speedrun = (() => {
   // =========================================================
   // Live timer screen
   // =========================================================
+  // 1. ADICIONA AS VARIÁVEIS DE PAUSA NO RESET
   function resetTimerState(game, pbRun) {
     Timer.game = game;
     Timer.pbRun = pbRun;
     Timer.bestSegments = getBestSegments(game.id);
     Timer.running = false;
     Timer.finished = false;
+    Timer.isPaused = false; // NOVO
+    Timer.pauseTs = 0;      // NOVO
     Timer.startTs = 0;
     Timer.pausedAccum = 0;
     Timer.splitTimes = [];
@@ -167,6 +170,7 @@ const Speedrun = (() => {
   // =========================================================
 
   // Nova função que apenas limpa a interface do cronômetro
+// Nova função que apenas limpa a interface do cronômetro
   function refreshTimerView(gameId) {
     const g = games.find(x => x.id === gameId);
     const pb = pbFor(gameId);
@@ -195,12 +199,20 @@ const Speedrun = (() => {
     const mainBtn = document.getElementById('btn-timer-main');
     mainBtn.textContent = 'Iniciar';
     mainBtn.className = 'btn-timer-main';
+    mainBtn.disabled = false;
     document.getElementById('btn-undo-split').disabled = true;
     document.getElementById('btn-reset-run').disabled = true;
     
-    // Garante que o botão pular recomeça desligado
+    // --- É AQUI QUE OS BOTÕES SÃO ZERADOS ---
     const skipBtn = document.getElementById('btn-skip-split');
     if(skipBtn) skipBtn.disabled = true;
+
+    const pauseBtn = document.getElementById('btn-pause-run');
+    if(pauseBtn) { 
+      pauseBtn.disabled = true; 
+      pauseBtn.textContent = 'Pausar'; 
+    }
+    // ----------------------------------------
 
     renderSplitRows();
   }
@@ -254,15 +266,13 @@ const Speedrun = (() => {
     highlightCurrentRow();
   }
 
-// --- SUBSTITUA A highlightCurrentRow POR ESTA ---
+// 2. DESLIGA O DESTAQUE SE ESTIVER PAUSADO
   function highlightCurrentRow() {
     const idx = Timer.splitTimes.length;
     Timer.rowEls.forEach((row, i) => {
-      const isCurrent = (i === idx && Timer.running && !Timer.finished);
+      const isCurrent = (i === idx && Timer.running && !Timer.finished && !Timer.isPaused);
       row.classList.toggle('is-current', isCurrent);
       row.querySelector('.split-name').classList.toggle('is-current', isCurrent);
-      
-      // Auto-scroll mágico: empurra a linha atual para o meio da lista
       if (isCurrent) {
         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -299,6 +309,39 @@ const Speedrun = (() => {
     }
 
     Timer.rafId = requestAnimationFrame(tick);
+  }
+
+  // --- NOVA FUNÇÃO ---
+  function togglePause() {
+    if (Timer.finished) return;
+    if (!Timer.running && !Timer.isPaused) return; // Se não começou, ignora
+
+    const pauseBtn = document.getElementById('btn-pause-run');
+    const mainBtn = document.getElementById('btn-timer-main');
+
+    if (Timer.isPaused) {
+      // RETOMAR
+      Timer.isPaused = false;
+      Timer.running = true;
+      Timer.pausedAccum += performance.now() - Timer.pauseTs; // Desconta o tempo que ficou parado
+      
+      pauseBtn.textContent = 'Pausar';
+      mainBtn.disabled = false; // Religa o botão Split
+      
+      highlightCurrentRow();
+      tick(); // Recomeça a animação do relógio
+    } else {
+      // PAUSAR
+      Timer.isPaused = true;
+      Timer.running = false;
+      Timer.pauseTs = performance.now(); // Marca a hora exata da pausa
+      
+      pauseBtn.textContent = 'Retomar';
+      mainBtn.disabled = true; // Desabilita o Split para não clicar sem querer
+      
+      highlightCurrentRow(); // Apaga o destaque da linha
+      if (Timer.rafId) cancelAnimationFrame(Timer.rafId);
+    }
   }
 
   function startOrSplit() {
@@ -396,7 +439,8 @@ const Speedrun = (() => {
   }
 
   // --- SUBSTITUA O SEU finishRun POR ESTE ---
-async function finishRun(totalTime) {
+// 3. ATUALIZA A TELA INICIAL QUANDO ACABA (O Fim do Recorde Fantasma)
+  async function finishRun(totalTime) {
     Timer.finished = true;
     Timer.running = false;
     if (Timer.rafId) cancelAnimationFrame(Timer.rafId);
@@ -404,10 +448,8 @@ async function finishRun(totalTime) {
     document.getElementById('live-delta').textContent = '';
     document.getElementById('clock-box').className = 'clock-box';
 
-    // Pega o PB ANTERIOR antes de salvar a corrida nova
     const previousRuns = runsByGame[Timer.game.id] || [];
     const prevPb = previousRuns.length ? previousRuns.reduce((min, r) => r.totalTime < min.totalTime ? r : min) : null;
-    
     const isNewPB = !prevPb || totalTime < prevPb.totalTime;
     
     const run = {
@@ -422,13 +464,20 @@ async function finishRun(totalTime) {
     (runsByGame[Timer.game.id] ||= []).push(run);
     if (isNewPB) Timer.pbRun = run;
 
+    // --- MÁGICA AQUI: Atualiza a tela inicial lá atrás! ---
+    await renderHome();
+
     document.getElementById('btn-timer-main').className = 'btn-timer-main';
     document.getElementById('btn-timer-main').textContent = 'Iniciar';
     document.getElementById('btn-undo-split').disabled = true;
+    
+    // Trava os botões
     const skipBtn = document.getElementById('btn-skip-split');
     if(skipBtn) skipBtn.disabled = true;
+    const pauseBtn = document.getElementById('btn-pause-run');
+    if(pauseBtn) { pauseBtn.disabled = true; pauseBtn.textContent = 'Pausar'; }
 
-    // Relatório detalhado (mantido o código anterior)
+    // (O resto do seu código de relatorio continua igual daqui para baixo)
     const detailsWrap = document.getElementById('run-summary-details');
     detailsWrap.innerHTML = Timer.game.segments.map((name, i) => {
       const segTime = run.segmentTimes[i];
@@ -460,7 +509,6 @@ async function finishRun(totalTime) {
       `;
     }).join('');
 
-    // Preenchendo as novas caixas lado a lado
     const flag = document.getElementById('run-summary-flag');
     const sub = document.getElementById('run-summary-sub');
     const elTime = document.getElementById('run-summary-time');
@@ -470,7 +518,6 @@ async function finishRun(totalTime) {
     elTime.textContent = formatClock(totalTime);
     elPb.textContent = prevPb ? formatClock(prevPb.totalTime) : '—';
     
-    // Deixa o tempo dourado se for novo recorde
     if (isNewPB) {
       elTime.classList.add('is-gold');
       sub.textContent = 'Essa é a nova marca a bater da próxima vez!';
@@ -626,19 +673,23 @@ async function finishRun(totalTime) {
     };
   }
 
-  // --- SUBSTITUA O SEU wireTimer POR ESTE ---
+  // 4. LIGA O BOTÃO NA NAVEGAÇÃO
   function wireTimer() {
     document.getElementById('btn-timer-main').onclick = startOrSplit;
     document.getElementById('btn-undo-split').onclick = undoLastSplit;
     
-    // Liga o botão de Pular e habilita/desabilita no momento certo
     const skipBtn = document.getElementById('btn-skip-split');
-    skipBtn.onclick = skipSplit;
+    if (skipBtn) skipBtn.onclick = skipSplit;
+    
+    const pauseBtn = document.getElementById('btn-pause-run');
+    if (pauseBtn) pauseBtn.onclick = togglePause;
     
     const originalStart = document.getElementById('btn-timer-main').onclick;
     document.getElementById('btn-timer-main').onclick = () => {
        originalStart();
-       skipBtn.disabled = !Timer.running;
+       if (skipBtn) skipBtn.disabled = !Timer.running;
+       // Desperta o Pause também
+       if (pauseBtn) pauseBtn.disabled = (!Timer.running && !Timer.isPaused);
     };
     
     document.getElementById('btn-reset-run').onclick = resetRun;

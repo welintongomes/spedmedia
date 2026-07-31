@@ -648,3 +648,23 @@ input[type=range]::-moz-range-thumb{
 .summary-time-value.is-gold {
   color: var(--gold);
 }
+
+/* =========================================================
+   Ajuste dos Controles para Mobile
+   ========================================================= */
+.timer-controls {
+  display: flex;
+  flex-wrap: wrap; /* Permite que o Iniciar ocupe a linha toda e empurre o resto */
+  gap: 8px;
+  padding-top: 14px;
+}
+.timer-controls .btn-timer-main {
+  flex: 1 1 100%;
+  margin-bottom: 4px;
+}
+.timer-controls .btn-ghost {
+  flex: 1;
+  padding: 10px 2px; /* Reduz um pouco o respiro lateral para caberem 4 botões */
+  font-size: 0.72rem;
+  min-width: 65px;
+}
