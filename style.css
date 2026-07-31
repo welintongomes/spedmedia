@@ -121,7 +121,7 @@ a{ color:var(--teal); }
 main{
   flex:1;
   overflow-y:auto;
-  padding-bottom:calc(var(--bottomnav-h) + 24px + env(safe-area-inset-bottom));
+  /* padding-bottom:calc(var(--bottomnav-h) + 24px + env(safe-area-inset-bottom)); */
 }
 
 .screen{ display:none; padding:16px; animation:fadeIn .18s ease; }
@@ -191,7 +191,7 @@ main{
 /* =========================================================
    Lists / cards
    ========================================================= */
-.list{ display:flex; flex-direction:column; gap:10px; }
+.list{ max-height: 400px; overflow-y: auto; display:flex; flex-direction:column; gap:10px; }
 
 .card{
   background:var(--bg-elevated);
@@ -305,7 +305,7 @@ input[type=range]::-moz-range-thumb{
 .value-per-hour-box.is-bad strong{ color:var(--coral); }
 
 /* segment list (speedrun form) */
-.segment-list{ display:flex; flex-direction:column; gap:8px; }
+.segment-list{ overflow-y: auto; max-height: 300px; display:flex; flex-direction:column; gap:8px; }
 .segment-row{ display:flex; align-items:center; gap:8px; }
 .segment-row .seg-index{ font-family:var(--font-mono); color:var(--text-faint); font-size:0.8rem; width:20px; text-align:right; flex-shrink:0; }
 .segment-row input{ flex:1; }
